@@ -8,11 +8,11 @@ interface CreditExhaustedModalProps {
 
 export const CreditExhaustedModal: React.FC<CreditExhaustedModalProps> = ({ onClose, onUpgrade, isLoading }) => {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
       <div className="bg-white border border-gray-100 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-slide-up relative text-center">
         
         {/* Decorative Top Pattern */}
-        <div className="h-2 bg-rapid-yellow w-full"></div>
+        <div className="h-2 bg-gradient-to-r from-rapid-yellow to-yellow-500 w-full"></div>
 
         <button 
           onClick={onClose}
@@ -36,16 +36,25 @@ export const CreditExhaustedModal: React.FC<CreditExhaustedModalProps> = ({ onCl
 
           <h2 className="text-2xl font-bold text-rapid-black mb-2">Out of Credits</h2>
           <p className="text-gray-500 text-sm leading-relaxed mb-6">
-            You've used all your free credits. Upgrade to <span className="text-rapid-yellow font-bold">Pro</span> to continue generating.
+            You've used all your free credits. Upgrade to <span className="text-rapid-yellow font-bold">Pro</span> to continue generating documents without limits.
           </p>
 
           <div className="space-y-3">
             <button 
               onClick={onUpgrade}
               disabled={isLoading}
-              className="w-full py-3.5 px-4 bg-rapid-black text-white font-bold rounded-xl shadow-lg hover:bg-gray-800 transform active:scale-95 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-4 bg-rapid-black text-white font-bold rounded-xl shadow-lg hover:bg-gray-800 transform active:scale-95 transition-all flex items-center justify-center gap-2 group"
             >
-              {isLoading ? 'Processing...' : 'Get More Credits'}
+              {isLoading ? (
+                <span>Redirecting...</span>
+              ) : (
+                <>
+                  <span>Unlock 50 Credits ($5)</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m-4-4H3" />
+                  </svg>
+                </>
+              )}
             </button>
             
             <button 
@@ -55,6 +64,12 @@ export const CreditExhaustedModal: React.FC<CreditExhaustedModalProps> = ({ onCl
               Maybe Later
             </button>
           </div>
+          <p className="mt-4 text-[10px] text-gray-400 uppercase tracking-widest flex items-center justify-center gap-1">
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+             </svg>
+             Secured by Stripe
+          </p>
         </div>
       </div>
     </div>

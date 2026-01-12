@@ -13,6 +13,9 @@ import { auth } from './firebaseConfig';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { initializeUserProfile, getUserProfile, deductCredit, addCredits, saveDocument } from './services/userService';
 
+// Configured Stripe Payment Link
+const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_dRm8wP0Vl9Dw4bmdBc6sw02"; 
+
 const EXAMPLE_PROMPTS = [
   "Resignation letter effective in 2 weeks",
   "Freelance web design contract",
@@ -33,8 +36,11 @@ const App: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
-  const [isUpgrading, setIsUpgrading] = useState(false);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  
+  // Payment States
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
 
   // Monitor Authentication State
   useEffect(() => {
@@ -44,6 +50,9 @@ const App: React.FC = () => {
         try {
           const profile = await initializeUserProfile(currentUser);
           setUserProfile(profile);
+          
+          // Check for payment success callback
+          checkPaymentSuccess(currentUser.uid);
         } catch (error) {
           console.error("Error fetching user profile:", error);
         }
@@ -55,6 +64,34 @@ const App: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
+
+  // Handle Return from Stripe
+  const checkPaymentSuccess = async (uid: string) => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const success = urlParams.get('success');
+
+    if (success === 'true') {
+      setPaymentProcessing(true);
+      try {
+        // In a real production app, this should be handled by a Webhook to prevent spoofing.
+        // For this demo, we fulfill on client side.
+        await addCredits(uid, 50); // Add Pro credits
+        await refreshProfile();
+        
+        // Clean URL to prevent re-triggering on refresh
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Show success notification
+        setShowPaymentSuccess(true);
+        setTimeout(() => setShowPaymentSuccess(false), 6000);
+      } catch (error) {
+        console.error("Payment fulfillment failed", error);
+        alert("Error updating credits. Please contact support.");
+      } finally {
+        setPaymentProcessing(false);
+      }
+    }
+  };
 
   const refreshProfile = async () => {
     if (auth.currentUser) {
@@ -99,25 +136,21 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpgrade = async () => {
+  const handleUpgrade = () => {
     if (!userProfile) {
       setIsAuthModalOpen(true);
       return;
     }
     
-    setIsUpgrading(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    try {
-      await addCredits(userProfile.uid, 10);
-      await refreshProfile();
-      setIsCreditModalOpen(false);
-      alert("Successfully upgraded to Pro! 50 credits added.");
-    } catch (error) {
-      console.error("Upgrade failed:", error);
-      alert("Something went wrong with the upgrade.");
-    } finally {
-      setIsUpgrading(false);
-    }
+    // Construct URL with pre-filled email and client reference for tracking
+    const params = new URLSearchParams();
+    if (userProfile.email) params.append('prefilled_email', userProfile.email);
+    params.append('client_reference_id', userProfile.uid);
+    
+    const separator = STRIPE_PAYMENT_LINK.includes('?') ? '&' : '?';
+    const finalLink = `${STRIPE_PAYMENT_LINK}${separator}${params.toString()}`;
+    
+    window.location.href = finalLink;
   };
 
   const handleSignatureSave = (dataUrl: string) => {
@@ -166,6 +199,29 @@ const App: React.FC = () => {
         <div className="absolute bottom-0 left-1/4 w-[300px] h-[300px] bg-purple-100/30 rounded-full blur-[80px] translate-y-1/3 animate-blob animation-delay-4000"></div>
       </div>
 
+      {/* Success Notification - Sleek Floating Modal */}
+      {showPaymentSuccess && (
+        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-[60] animate-fade-in w-full max-w-sm px-4">
+          <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-4 backdrop-blur-sm relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></div>
+            <div className="bg-emerald-100 p-2 rounded-full shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-bold text-emerald-900">Upgrade Successful!</h3>
+              <p className="text-sm text-emerald-700 leading-tight mt-0.5">Your Pro plan is active. 50 credits have been added.</p>
+            </div>
+            <button onClick={() => setShowPaymentSuccess(false)} className="ml-auto text-emerald-400 hover:text-emerald-600 transition-colors p-1">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -202,7 +258,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-4 pl-4 border-l border-slate-200">
                   {/* Credits */}
                   <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 border border-slate-200 shadow-sm backdrop-blur-sm">
-                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                      <span className={`w-2 h-2 rounded-full animate-pulse ${userProfile.credits > 0 ? 'bg-green-500' : 'bg-red-500'}`}></span>
                       <span className="text-rapid-black font-bold text-sm">{userProfile.credits}</span>
                       <span className="text-slate-400 text-xs font-semibold uppercase">Credits</span>
                   </div>
@@ -246,123 +302,133 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className="flex-grow flex flex-col relative z-10 pt-20">
         
-        {step === AppStep.IDLE && (
-          <div className="flex flex-col items-center justify-center flex-grow px-6 py-20 relative">
-             
-             <div className="max-w-4xl mx-auto text-center z-10 animate-slide-up">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-50 border border-yellow-100 mb-8 animate-fade-in">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
-                  </span>
-                  <span className="text-xs font-bold text-yellow-700 uppercase tracking-wide">AI-Powered Generation 2.0</span>
-                </div>
-
-                <h1 className="text-6xl md:text-7xl lg:text-8xl font-extrabold text-rapid-black mb-8 leading-[1.1] tracking-tight">
-                  Intelligent Documents, <br />
-                  <span className="text-gradient-gold relative">
-                    Effortless Flow.
-                    <svg className="absolute -bottom-2 left-0 w-full h-3 text-yellow-300/30 -z-10" viewBox="0 0 100 10" preserveAspectRatio="none">
-                       <path d="M0 5 Q 50 10 100 5" stroke="currentColor" strokeWidth="8" fill="none" />
-                    </svg>
-                  </span>
-                </h1>
-                
-                <p className="text-xl text-slate-500 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
-                  Transform your business operations with our next-gen drafting engine. 
-                  Create professional contracts, invoices, and letters in seconds.
-                </p>
-
-                {/* Input Area */}
-                <div className="max-w-2xl mx-auto relative group">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-yellow-300 to-orange-300 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-                  <div className="relative bg-white rounded-2xl shadow-glass flex items-center p-2 border border-slate-100 transition-transform focus-within:scale-[1.01]">
-                    <div className="flex-grow relative">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <svg className="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                        </svg>
-                      </div>
-                      <input
-                        type="text"
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="Describe the document you need..."
-                        className="w-full pl-12 pr-4 py-4 text-lg text-rapid-black placeholder-slate-400 bg-transparent focus:outline-none"
-                        onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                      />
+        {paymentProcessing ? (
+           <div className="flex flex-col items-center justify-center flex-grow animate-fade-in">
+             <div className="w-16 h-16 border-4 border-rapid-yellow border-t-transparent rounded-full animate-spin mb-4"></div>
+             <h2 className="text-2xl font-bold text-rapid-black">Confirming Payment...</h2>
+             <p className="text-gray-500">Updating your account with Pro benefits.</p>
+           </div>
+        ) : (
+          <>
+            {step === AppStep.IDLE && (
+              <div className="flex flex-col items-center justify-center flex-grow px-6 py-20 relative">
+                 
+                 <div className="max-w-4xl mx-auto text-center z-10 animate-slide-up">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-50 border border-yellow-100 mb-8 animate-fade-in">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+                      </span>
+                      <span className="text-xs font-bold text-yellow-700 uppercase tracking-wide">AI-Powered Generation 2.0</span>
                     </div>
-                    <button
-                      onClick={handleGenerate}
-                      disabled={!prompt.trim()}
-                      className="px-8 py-3.5 bg-rapid-black text-white font-bold rounded-xl hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md active:scale-95 whitespace-nowrap flex items-center gap-2"
-                    >
-                      <span>Generate</span>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
 
-                {/* Example Tags */}
-                <div className="mt-10 flex flex-wrap justify-center gap-3 animate-fade-in delay-200">
-                  <span className="text-sm font-semibold text-slate-400 mr-2">Popular:</span>
-                  {EXAMPLE_PROMPTS.slice(0, 3).map((example, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setPrompt(example)}
-                      className="px-4 py-2 bg-white/60 backdrop-blur-sm border border-slate-200 rounded-full text-xs font-semibold text-slate-600 hover:border-rapid-yellow hover:text-rapid-black hover:bg-white transition-all shadow-sm"
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
-             </div>
-          </div>
-        )}
+                    <h1 className="text-6xl md:text-7xl lg:text-8xl font-extrabold text-rapid-black mb-8 leading-[1.1] tracking-tight">
+                      Intelligent Documents, <br />
+                      <span className="text-gradient-gold relative">
+                        Effortless Flow.
+                        <svg className="absolute -bottom-2 left-0 w-full h-3 text-yellow-300/30 -z-10" viewBox="0 0 100 10" preserveAspectRatio="none">
+                           <path d="M0 5 Q 50 10 100 5" stroke="currentColor" strokeWidth="8" fill="none" />
+                        </svg>
+                      </span>
+                    </h1>
+                    
+                    <p className="text-xl text-slate-500 mb-12 max-w-2xl mx-auto font-medium leading-relaxed">
+                      Transform your business operations with our next-gen drafting engine. 
+                      Create professional contracts, invoices, and letters in seconds.
+                    </p>
 
-        {step === AppStep.GENERATING && <LoadingOverlay />}
+                    {/* Input Area */}
+                    <div className="max-w-2xl mx-auto relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-yellow-300 to-orange-300 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                      <div className="relative bg-white rounded-2xl shadow-glass flex items-center p-2 border border-slate-100 transition-transform focus-within:scale-[1.01]">
+                        <div className="flex-grow relative">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <svg className="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            value={prompt}
+                            onChange={(e) => setPrompt(e.target.value)}
+                            placeholder="Describe the document you need..."
+                            className="w-full pl-12 pr-4 py-4 text-lg text-rapid-black placeholder-slate-400 bg-transparent focus:outline-none"
+                            onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                          />
+                        </div>
+                        <button
+                          onClick={handleGenerate}
+                          disabled={!prompt.trim()}
+                          className="px-8 py-3.5 bg-rapid-black text-white font-bold rounded-xl hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md active:scale-95 whitespace-nowrap flex items-center gap-2"
+                        >
+                          <span>Generate</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
 
-        {step === AppStep.PREVIEW && generatedDoc && (
-          <div className="w-full py-8 px-4 md:px-0">
-            <DocumentView 
-              document={generatedDoc}
-              signature={signature}
-              onOpenSignature={() => setIsSignatureModalOpen(true)}
-              onReset={handleReset}
-              onUpdate={handleDocumentUpdate}
-            />
-          </div>
-        )}
+                    {/* Example Tags */}
+                    <div className="mt-10 flex flex-wrap justify-center gap-3 animate-fade-in delay-200">
+                      <span className="text-sm font-semibold text-slate-400 mr-2">Popular:</span>
+                      {EXAMPLE_PROMPTS.slice(0, 3).map((example, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setPrompt(example)}
+                          className="px-4 py-2 bg-white/60 backdrop-blur-sm border border-slate-200 rounded-full text-xs font-semibold text-slate-600 hover:border-rapid-yellow hover:text-rapid-black hover:bg-white transition-all shadow-sm"
+                        >
+                          {example}
+                        </button>
+                      ))}
+                    </div>
+                 </div>
+              </div>
+            )}
 
-        {step === AppStep.HISTORY && (
-          userProfile ? (
-            <HistoryView userId={userProfile.uid} onSelectDocument={handleSelectFromHistory} />
-          ) : (
-             <div className="flex flex-col items-center justify-center py-32 animate-fade-in">
-               <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6">
-                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                 </svg>
-               </div>
-               <h2 className="text-3xl font-bold text-rapid-black mb-4">Authentication Required</h2>
-               <p className="text-slate-500 mb-8 max-w-md text-center">Please log in to your account to view your securely stored document history.</p>
-               <button 
-                onClick={() => setIsAuthModalOpen(true)}
-                className="px-8 py-3 bg-rapid-yellow text-rapid-black font-bold rounded-full hover:bg-yellow-400 shadow-glow transition-all"
-               >
-                 Log In / Sign Up
-               </button>
-             </div>
-          )
-        )}
+            {step === AppStep.GENERATING && <LoadingOverlay />}
 
-        {step === AppStep.PRICING && (
-          <PricingView 
-            onUpgrade={handleUpgrade} 
-            userPlan={userProfile?.plan} 
-          />
+            {step === AppStep.PREVIEW && generatedDoc && (
+              <div className="w-full py-8 px-4 md:px-0">
+                <DocumentView 
+                  document={generatedDoc}
+                  signature={signature}
+                  onOpenSignature={() => setIsSignatureModalOpen(true)}
+                  onReset={handleReset}
+                  onUpdate={handleDocumentUpdate}
+                />
+              </div>
+            )}
+
+            {step === AppStep.HISTORY && (
+              userProfile ? (
+                <HistoryView userId={userProfile.uid} onSelectDocument={handleSelectFromHistory} />
+              ) : (
+                 <div className="flex flex-col items-center justify-center py-32 animate-fade-in">
+                   <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                     </svg>
+                   </div>
+                   <h2 className="text-3xl font-bold text-rapid-black mb-4">Authentication Required</h2>
+                   <p className="text-slate-500 mb-8 max-w-md text-center">Please log in to your account to view your securely stored document history.</p>
+                   <button 
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="px-8 py-3 bg-rapid-yellow text-rapid-black font-bold rounded-full hover:bg-yellow-400 shadow-glow transition-all"
+                   >
+                     Log In / Sign Up
+                   </button>
+                 </div>
+              )
+            )}
+
+            {step === AppStep.PRICING && (
+              <PricingView 
+                onUpgrade={handleUpgrade} 
+                userPlan={userProfile?.plan} 
+              />
+            )}
+          </>
         )}
       </main>
 
@@ -396,7 +462,7 @@ const App: React.FC = () => {
         <CreditExhaustedModal 
           onClose={() => setIsCreditModalOpen(false)}
           onUpgrade={handleUpgrade}
-          isLoading={isUpgrading}
+          isLoading={false} // Loading handled by page redirect now
         />
       )}
 

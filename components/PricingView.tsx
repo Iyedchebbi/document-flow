@@ -93,13 +93,20 @@ export const PricingView: React.FC<PricingViewProps> = ({ onUpgrade, userPlan })
           <button 
             onClick={onUpgrade}
             disabled={userPlan === 'pro'}
-            className={`w-full py-4 rounded-2xl font-bold transition-all shadow-lg relative z-10 ${
+            className={`w-full py-4 rounded-2xl font-bold transition-all shadow-lg relative z-10 flex items-center justify-center gap-2 ${
               userPlan === 'pro' 
               ? 'bg-slate-700 text-slate-300 cursor-default' 
               : 'bg-rapid-yellow text-rapid-black hover:bg-yellow-400 shadow-yellow-500/20 hover:shadow-yellow-500/40 active:scale-95'
             }`}
           >
-            {userPlan === 'pro' ? 'Current Plan' : 'Get Access Pro Plan'}
+            {userPlan === 'pro' ? 'Current Plan' : (
+              <>
+                 Get Pro Access
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m-4-4H3" />
+                 </svg>
+              </>
+            )}
           </button>
         </div>
       </div>
